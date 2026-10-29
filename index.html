@@ -1,0 +1,303 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Grafik Bitcoin</title>
+<style>
+:root{--bg:#f3f5f9;--card:#ffffff;--text:#101828;--muted:#667085;--line:#e4e7ec;--up:#0e9f6e;--down:#e0393e;--accent:#f7931a;--pill:#eef1f6;
+box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);color-scheme:light}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#0b1020;--card:#131a2e;--text:#eaeefb;--muted:#8e99b8;--line:#232c47;--up:#2fd5a1;--down:#ff6b70;--pill:#1b2440;color-scheme:dark}}
+:root[data-theme="dark"]{--bg:#0b1020;--card:#131a2e;--text:#eaeefb;--muted:#8e99b8;--line:#232c47;--up:#2fd5a1;--down:#ff6b70;--pill:#1b2440;color-scheme:dark}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font-family:Inter,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;line-height:1.4;-webkit-font-smoothing:antialiased}
+.wrap{max-width:980px;margin:0 auto;padding:16px}
+header{display:flex;align-items:center;gap:10px;margin-bottom:14px}
+.logo{width:34px;height:34px;border-radius:50%;background:var(--accent);color:#fff;display:grid;place-items:center;font-weight:700;font-size:19px}
+h1{font-size:17px;margin:0;font-weight:650}
+h1 small{display:block;font-weight:400;color:var(--muted);font-size:12px}
+.sp{flex:1}
+.badge{font-size:12px;padding:4px 9px;border-radius:99px;background:var(--pill);color:var(--muted)}
+.badge.on{background:color-mix(in srgb,var(--up) 18%,transparent);color:var(--up)}
+button{font:inherit;color:var(--text);background:var(--pill);border:0;border-radius:9px;padding:7px 12px;cursor:pointer}
+button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+button.on{background:var(--accent);color:#fff}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px}
+.top{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap}
+.price{font-size:clamp(28px,7vw,40px);font-weight:700;font-variant-numeric:tabular-nums;letter-spacing:-.02em}
+.chg{font-weight:600;font-size:15px}.up{color:var(--up)}.down{color:var(--down)}
+.bar{display:flex;gap:8px;flex-wrap:wrap;margin:14px 0 8px}
+.bar .grp{display:flex;gap:4px;background:var(--pill);padding:3px;border-radius:11px}
+.bar .grp button{background:transparent;padding:6px 11px}
+.bar .grp button.on{background:var(--accent)}
+.ohlc{font-size:12.5px;color:var(--muted);min-height:20px;font-variant-numeric:tabular-nums;overflow-x:auto;white-space:nowrap}
+.ohlc b{color:var(--text);font-weight:600;margin-right:8px}
+.box{position:relative;height:340px;margin-top:6px}
+canvas{position:absolute;inset:0;width:100%;height:100%;touch-action:pan-y;cursor:crosshair}
+.stats{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin-top:12px}
+@media(min-width:640px){.stats{grid-template-columns:repeat(4,1fr)}.box{height:420px}}
+.stat{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px 14px}
+.stat span{display:block;font-size:12.5px;color:var(--muted)}
+.stat b{font-size:15px;font-variant-numeric:tabular-nums}
+footer{margin:16px 2px 0;font-size:12.5px;color:var(--muted)}
+code{background:var(--pill);padding:1px 5px;border-radius:5px;font-size:12px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="logo">₿</div>
+    <h1>Bitcoin<small>BTC / USD</small></h1>
+    <div class="sp"></div>
+    <span id="badge" class="badge">Memuat…</span>
+    <button id="theme" aria-label="Ganti tema">Tema</button>
+  </header>
+
+  <section class="card">
+    <div class="top">
+      <div class="price" id="price">—</div>
+      <div class="chg" id="chg"></div>
+    </div>
+    <div class="bar">
+      <div class="grp" id="ranges"></div>
+      <div class="grp" id="types"></div>
+    </div>
+    <div class="ohlc" id="ohlc"></div>
+    <div class="box"><canvas id="chart"></canvas></div>
+  </section>
+
+  <section class="stats">
+    <div class="stat"><span>Tertinggi</span><b id="hi">—</b></div>
+    <div class="stat"><span>Terendah</span><b id="lo">—</b></div>
+    <div class="stat"><span>Volume</span><b id="vol">—</b></div>
+    <div class="stat"><span>Pembaruan terakhir</span><b id="upd">—</b></div>
+  </section>
+
+  <footer>Data diambil langsung dari Binance (BTCUSDT). Kalau Binance tidak bisa diakses, halaman memakai data contoh.</footer>
+</div>
+
+<script>
+/* ============ KONFIGURASI BACKEND ============
+   Kosongkan API_BASE_URL = pakai data contoh (mock).
+   Isi, mis. "https://api.domainmu.com" = ambil data dari backend.
+
+   GET {ticker}  -> { price, change24h(%), high24h, low24h, volume24h }
+   GET {candles}?range=7D&limit=168
+                 -> [ { t: epochMs, o, h, l, c, v }, ... ] urut dari lama ke baru
+   Opsional realtime: panggil connectWS() lalu update S.candles / S.ticker, kemudian render(). */
+const CONFIG = {
+  SOURCE: "binance",
+  SYMBOL: "BTCUSDT",
+  BINANCE_HOSTS: ["https://api.binance.com", "https://data-api.binance.vision"],
+  API_BASE_URL: "",
+  ENDPOINTS: { ticker: "/api/btc/ticker", candles: "/api/btc/candles" },
+  REFRESH_MS: 15000,
+  CURRENCY: "USD"
+};
+
+const RANGES = {
+  "1D":  { n: 96,  step: 9e5,   interval: "15m" },
+  "7D":  { n: 168, step: 36e5,  interval: "1h" },
+  "30D": { n: 120, step: 216e5, interval: "6h" },
+  "90D": { n: 90,  step: 864e5, interval: "1d" },
+  "1Y":  { n: 365, step: 864e5, interval: "1d" }
+};
+const $ = id => document.getElementById(id);
+const S = { range: "7D", type: "candle", candles: [], ticker: null, hover: -1, live: false, geo: null };
+const fmt = v => v.toLocaleString("en-US", { style: "currency", currency: CONFIG.CURRENCY, maximumFractionDigits: 2 });
+
+/* ---------- Data contoh ---------- */
+function rng(seed) {
+  return () => {
+    seed |= 0; seed = seed + 0x6D2B79F5 | 0;
+    let t = Math.imul(seed ^ seed >>> 15, 1 | seed);
+    t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+    return ((t ^ t >>> 14) >>> 0) / 4294967296;
+  };
+}
+function mock(range) {
+  const { n, step } = RANGES[range], r = rng(n * 7 + step % 97);
+  const now = Math.floor(Date.now() / step) * step;
+  let p = 68000; const out = [];
+  for (let i = n - 1; i >= 0; i--) {
+    const o = p, vol = p * 0.006 * (step >= 864e5 ? 2.2 : 1);
+    const c = o + (r() - 0.5) * vol * 2;
+    out.push({ t: now - i * step, o, c, h: Math.max(o, c) + r() * vol * 0.6, l: Math.min(o, c) - r() * vol * 0.6, v: 500 + r() * 1500 });
+    p = c;
+  }
+  return out;
+}
+
+/* ---------- Lapisan API (satu-satunya tempat fetch) ---------- */
+async function api(key, params) {
+  if (!CONFIG.API_BASE_URL) return null;
+  try {
+    const u = new URL(CONFIG.ENDPOINTS[key], CONFIG.API_BASE_URL);
+    Object.entries(params || {}).forEach(([k, v]) => u.searchParams.set(k, v));
+    const r = await fetch(u);
+    if (!r.ok) throw new Error(r.status);
+    return await r.json();
+  } catch (e) { console.warn("API gagal:", key, e); return null; }
+}
+async function binance(path, params) {
+  if (CONFIG.SOURCE !== "binance") return null;
+  for (const host of CONFIG.BINANCE_HOSTS) {
+    try {
+      const u = new URL(path, host);
+      Object.entries(params).forEach(([k, v]) => u.searchParams.set(k, v));
+      const r = await fetch(u);
+      if (r.ok) return await r.json();
+    } catch (e) { console.warn("Binance gagal:", host, e); }
+  }
+  return null;
+}
+async function getCandles() {
+  const R = RANGES[S.range];
+  const b = await binance("/api/v3/klines", { symbol: CONFIG.SYMBOL, interval: R.interval, limit: R.n });
+  if (Array.isArray(b) && b.length) return b.map(k => ({ t: k[0], o: +k[1], h: +k[2], l: +k[3], c: +k[4], v: +k[5] }));
+  const d = await api("candles", { range: S.range, limit: R.n });
+  return Array.isArray(d) && d.length ? d : null;
+}
+async function loadCandles() {
+  const d = await getCandles();
+  if (d) { S.candles = d; S.live = true; }
+  else { S.candles = mock(S.range); S.live = false; }
+  await loadTicker();
+  render();
+}
+async function loadTicker() {
+  const c = S.candles;
+  if (S.live) {
+    const b = await binance("/api/v3/ticker/24hr", { symbol: CONFIG.SYMBOL });
+    if (b && b.lastPrice) {
+      S.ticker = { price: +b.lastPrice, change24h: +b.priceChangePercent, high24h: +b.highPrice, low24h: +b.lowPrice, volume24h: +b.volume };
+      return;
+    }
+    const d = await api("ticker");
+    if (d && d.price) { S.ticker = d; return; }
+  }
+  S.ticker = {
+    price: c[c.length - 1].c,
+    change24h: (c[c.length - 1].c - c[0].o) / c[0].o * 100,
+    high24h: Math.max(...c.map(x => x.h)),
+    low24h: Math.min(...c.map(x => x.l)),
+    volume24h: c.reduce((a, x) => a + x.v, 0)
+  };
+}
+function tick() { // simulasi harga bergerak saat mode contoh
+  const c = S.candles, l = c[c.length - 1];
+  l.c += (Math.random() - 0.5) * l.c * 0.0008;
+  l.h = Math.max(l.h, l.c); l.l = Math.min(l.l, l.c);
+  S.ticker.price = l.c;
+  S.ticker.change24h = (l.c - c[0].o) / c[0].o * 100;
+  render();
+}
+
+/* ---------- Tampilan ---------- */
+function renderStats() {
+  const t = S.ticker; if (!t) return;
+  $("price").textContent = fmt(t.price);
+  const ch = $("chg");
+  ch.textContent = (t.change24h >= 0 ? "+" : "") + t.change24h.toFixed(2) + "%";
+  ch.className = "chg " + (t.change24h >= 0 ? "up" : "down");
+  $("hi").textContent = fmt(t.high24h);
+  $("lo").textContent = fmt(t.low24h);
+  $("vol").textContent = Math.round(t.volume24h).toLocaleString("en-US") + " BTC";
+  $("upd").textContent = new Date().toLocaleTimeString("id-ID");
+  const b = $("badge");
+  b.textContent = S.live ? "Live" : "Data contoh";
+  b.className = "badge" + (S.live ? " on" : "");
+}
+
+function draw() {
+  const cv = $("chart"), box = cv.parentElement, dpr = window.devicePixelRatio || 1;
+  const W = box.clientWidth, H = box.clientHeight;
+  cv.width = W * dpr; cv.height = H * dpr;
+  const g = cv.getContext("2d"); g.setTransform(dpr, 0, 0, dpr, 0, 0);
+  const c = S.candles; if (!c.length) return;
+  const cs = getComputedStyle(document.documentElement), col = n => cs.getPropertyValue(n).trim();
+  const padL = 8, padR = 62, padT = 10, padB = 24, w = W - padL - padR, h = H - padT - padB;
+  let mn = Math.min(...c.map(x => x.l)), mx = Math.max(...c.map(x => x.h));
+  const m = (mx - mn) * 0.06; mn -= m; mx += m;
+  const X = i => padL + (i + 0.5) * w / c.length, Y = v => padT + (mx - v) / (mx - mn) * h;
+  S.geo = { padL, w, n: c.length };
+
+  g.font = "11px system-ui,sans-serif"; g.lineWidth = 1;
+  for (let i = 0; i <= 4; i++) {
+    const v = mn + (mx - mn) * i / 4, y = Y(v);
+    g.strokeStyle = col("--line"); g.beginPath(); g.moveTo(padL, y); g.lineTo(padL + w, y); g.stroke();
+    g.fillStyle = col("--muted"); g.textAlign = "left"; g.fillText(Math.round(v).toLocaleString("en-US"), padL + w + 6, y + 4);
+  }
+  g.textAlign = "center"; g.fillStyle = col("--muted");
+  for (let i = 0; i < 5; i++) {
+    const k = Math.floor((c.length - 1) * i / 4), d = new Date(c[k].t);
+    const lbl = S.range === "1D" ? d.toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" })
+                                 : d.toLocaleDateString("id-ID", { day: "numeric", month: "short" });
+    g.fillText(lbl, Math.min(Math.max(X(k), 24), W - padR - 16), H - 7);
+  }
+
+  const up = col("--up"), dn = col("--down");
+  if (S.type === "line") {
+    const lc = c[c.length - 1].c >= c[0].c ? up : dn;
+    g.beginPath(); c.forEach((x, i) => i ? g.lineTo(X(i), Y(x.c)) : g.moveTo(X(i), Y(x.c)));
+    g.strokeStyle = lc; g.lineWidth = 2; g.stroke();
+    g.lineTo(X(c.length - 1), padT + h); g.lineTo(X(0), padT + h); g.closePath();
+    const gr = g.createLinearGradient(0, padT, 0, padT + h);
+    gr.addColorStop(0, lc + "40"); gr.addColorStop(1, lc + "00"); g.fillStyle = gr; g.fill();
+  } else {
+    const bw = Math.max(1, Math.min(14, w / c.length * 0.7));
+    c.forEach((x, i) => {
+      const k = x.c >= x.o ? up : dn;
+      g.strokeStyle = k; g.fillStyle = k; g.lineWidth = 1;
+      g.beginPath(); g.moveTo(X(i), Y(x.h)); g.lineTo(X(i), Y(x.l)); g.stroke();
+      const y1 = Y(Math.max(x.o, x.c)), y2 = Y(Math.min(x.o, x.c));
+      g.fillRect(X(i) - bw / 2, y1, bw, Math.max(1, y2 - y1));
+    });
+  }
+  if (S.hover >= 0) {
+    const x = X(S.hover);
+    g.strokeStyle = col("--muted"); g.setLineDash([4, 4]);
+    g.beginPath(); g.moveTo(x, padT); g.lineTo(x, padT + h); g.stroke(); g.setLineDash([]);
+  }
+  const k = S.hover >= 0 ? c[S.hover] : c[c.length - 1];
+  $("ohlc").innerHTML = `<b>${new Date(k.t).toLocaleString("id-ID", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}</b>` +
+    `Buka ${fmt(k.o)} &nbsp; Tinggi ${fmt(k.h)} &nbsp; Rendah ${fmt(k.l)} &nbsp; Tutup ${fmt(k.c)}`;
+}
+function render() { renderStats(); draw(); }
+
+/* ---------- Kontrol ---------- */
+function buildBtns(id, items, key, onPick) {
+  const el = $(id); el.innerHTML = "";
+  items.forEach(([val, label]) => {
+    const b = document.createElement("button");
+    b.textContent = label; b.className = S[key] === val ? "on" : "";
+    b.onclick = () => { S[key] = val; buildBtns(id, items, key, onPick); onPick(); };
+    el.appendChild(b);
+  });
+}
+buildBtns("ranges", Object.keys(RANGES).map(k => [k, k]), "range", () => { S.hover = -1; loadCandles(); });
+buildBtns("types", [["candle", "Candle"], ["line", "Garis"]], "type", draw);
+
+$("theme").onclick = () => {
+  const r = document.documentElement, dark = getComputedStyle(r).colorScheme === "dark";
+  r.setAttribute("data-theme", dark ? "light" : "dark"); draw();
+};
+const cv = $("chart");
+function hoverAt(e) {
+  if (!S.geo) return;
+  const x = e.clientX - cv.getBoundingClientRect().left;
+  S.hover = Math.max(0, Math.min(S.geo.n - 1, Math.round((x - S.geo.padL) / S.geo.w * S.geo.n - 0.5)));
+  draw();
+}
+cv.addEventListener("pointermove", hoverAt);
+cv.addEventListener("pointerdown", hoverAt);
+cv.addEventListener("pointerleave", () => { S.hover = -1; draw(); });
+window.addEventListener("resize", draw);
+
+loadCandles();
+setInterval(() => { if (S.candles.length && !S.live) tick(); }, 3000);
+setInterval(() => { if (S.live) loadCandles(); }, CONFIG.REFRESH_MS);
+</script>
+</body>
+</html>
